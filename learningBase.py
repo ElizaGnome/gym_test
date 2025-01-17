@@ -5,21 +5,26 @@ import numpy as np
 class PhaserGameEnv(gym.Env):
     def __init__(self):
         super(PhaserGameEnv, self).__init__()
-
+        #actual space, we have three moves (3) and space box
         self.action_space = spaces.Discrete(3)  
-        self.observation_space = spaces.Box(low=0, high=1, shape=(6,), dtype=np.float32)      
+        self.observation_space = spaces.Box(low=0, high=1, shape=(8,), dtype=np.float32)      
         self.reset()
 
+#where everything initally is defined
     def reset(self):
-        self.character_x =0.1
+        self.character_x = 0.1
         self.character_y = 0.5
         self.enemy_x = 0.7
         self.enemy_y = 0.5
         self.egg_counter =0
+        self.valve_collected = False
+        self.door_open = False
+        self.steam_off = False
         self.eggs = [(0.2, 0.5), (0.4, 0.5), (0.8, 0.3), (0.6, 0.2), (0.5, 0.6), (0.3, 0.4), (0.9, 0.5), (0.7, 0.6)]
         self.eggs_collected = [0] * len(self.eggs)
         self.health = 1.0
-        self.state = np.array([self.character_x, self.character_y, self.enemy_x, self.enemy_y, self.health, self.egg_counter])
+        self.throw_weapons = []
+        self.state = np.array([self.character_x, self.character_y, self.enemy_x, self.enemy_y, self.health, self.egg_counter, int(self.steam_off), int(self.door_open)])
 
         return self.state
 
@@ -39,6 +44,7 @@ class PhaserGameEnv(gym.Env):
             'face_direction': 0
         }
 
+    #this is to do with the motions / step methods
     def step(self, action):
         #left. right. jump
         if action == 0:
@@ -49,6 +55,7 @@ class PhaserGameEnv(gym.Env):
             if self.character_y == 0.5:
                 self.character_y = 0.7
         #grvity for jump
+        #enemy movement too
         if self.character_y > 0.5:
             self.character_y = max(self.character_y - 0.1, 0.5)
         #based on user location we need ot have the user move
@@ -58,44 +65,77 @@ class PhaserGameEnv(gym.Env):
 
 
         for weapon in self.throw_weapons:
-            weapon[0] +=
+            weapon[0] += 0.05
+            if weapon[0] > 1 or weapon[0] < 0:
+                self.thrown_weapons.remove(weapon)
 
+        reward = 0
+        for weapon in self.thrown_weapons:
+            if np.linalg.norm([self.character_x - weapon[0], self.character_y - weapon[1]]) < 0.1:
+                self.health -= 0.1
+                reward -= 1
+                self.thrown_weapons.remove(weapon)
+                self.hitPlayer_effects()  
+
+      
+
+       
+
+        for i, (egg_x, egg_y) in enumerate(self.eggs):
+            if np.linalg.norm([self.character_x - egg_x, self.character_y -egg_y])< 0.1 and not self.eggs_collected[i]:
+                self.eggs_collected[i] = 1
+                self.egg_counter += 1
+
+        for self.egg_counter == 8:
+            self.drop_valve()
+           
+
+        if self.valve_collected and np.linalg.norm([self.character_x - 0.9,self.character_y - 0.5]) <0.1:
+            self.turn_off_steam()
+        #then you can win 
+        
+        if self.steam_off and np.linalg.norm([self.character_x - 2040/2500, self.character_y - 520/520]) < 0.1:
+            self.door_open = True
+     
         #reward negative if hit, positive if you collect eggs and if you do not get hit by enemy
         #if user runs into x location, they die -100
         
-        reward =0
-        if self.character_x ==self.enemy_x and self.character_y ==self.enemy_y:
-            self.health -=0.1
-            reward -=1
         if self.health <=0:
             done = True
             reward -= 100
-        elif self.egg_counter == len(self.eggs):
+        elif self.door_open:
             done = True
             reward += 100
+        elif self.egg_counter == len(self.eggs):
+            done = True
+            reward += 50
         else:
             done = False
             reward +=1 
         
-        for weapon in self.thrown_weapons:
-            if np.linalg.norm([self.character_x - weapon[0],self.character_y - weapon[1]]) <0.1:
-                self.health -= 0.1
-                reward -=1
-                self.thrown_weapons.remove(weapon)
-
+      
         
         self.state = np.array([self.character_x, self.character_y, self.enemy_x, self.enemy_y, self.health, self.egg_counter])
         return self.state, reward, done, {}
+
     def render(self,mode = 'human' ):
         pass
 
+    def turn_off_steam(self):
+        self.steam_off = True
+        self.valve_collected = False 
+    
+    def hitPlayer_effects(self):
+        pass
 
-
-
-
-    def update_enemy_behavior(self):
+    def drop_valve(self):
+        print('valve dropped')
+        self.vavle_position(0.9, 0.5)
+        self.valve_collected = False
+        
+    def update_enemy_behaviour(self):
         # Update enemy patrol and throwing logic here
-        enemy = self.enemy
+        enemy = self.initialize_enemy()
         # Example patrol logic
         if enemy['x'] <= enemy['patrol_area']['start']:
             enemy['direction'] = 1
